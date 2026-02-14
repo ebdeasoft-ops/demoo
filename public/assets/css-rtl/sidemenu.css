@@ -26,7 +26,23 @@
     top: 0;
     position: fixed;
     z-index: 1; } }
+/* تكبير وتخين عناوين القائمة الرئيسية */
+.side-menu__label {
+    font-size: 20px !important; /* كبر الرقم زي ما تحب */
+    font-weight: 900 !important; /* أقصى درجة للتخن */
+}
 
+/* تكبير وتخين الروابط الفرعية داخل القوائم المنسدلة */
+.slide-menu a.slide-item {
+    font-size: 19px !important;
+    font-weight: 700 !important;
+}
+
+/* تكبير الأيقونات بجانب الكلام لتتناسق مع حجم الخط */
+.side-menu__icon {
+    width: 22px !important;
+    height: 22px !important;
+}
 @media (max-width: 767px) {
   .app {
     overflow-x: hidden; }
