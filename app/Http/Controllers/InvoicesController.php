@@ -47,6 +47,11 @@ use App\Services\Zatca\Invoice\LineTaxCategory;
 use App\Services\Zatca\Invoice\InvoiceLine;
 use App\Services\Zatca\Invoice\AllowanceCharge;
 use App\Services\Zatca\Invoice\InvoiceGenerator;
+use App\Models\sales_withoud_taxes;
+use App\Models\delivery_to_customer_withoud_tax_invoices;
+use App\Models\return_sales_deliverys;
+use Illuminate\Support\Facades\DB;
+
 class NumberToWord{
     public $and = ' و';
     public function __construct()
@@ -385,6 +390,2659 @@ class NumberToWord{
 
 class InvoicesController extends Controller
 {
+    
+    public function dashboard()
+{
+$today =  \Carbon\Carbon::today();
+$monthStart =  \Carbon\Carbon::now()->startOfMonth();
+
+
+$vat = Avt::find(1)->AVT;
+
+
+/* ================= TODAY SALES ================= */
+
+
+$todayInvoicesCount = invoices::whereDate('created_at',$today)
+->where('save',1)->count();
+
+
+$todaySales = invoices::whereDate('created_at',$today)
+->where('save',1)
+->sum(DB::raw('cashamount + bankamount + creaditamount + Bank_transfer'));
+
+
+$todayReturns = return_sales::whereDate('created_at',$today)
+->sum(DB::raw('(return_Unit_Price * return_quantity) - discountvalue - discountoninvoice'));
+
+
+$todayNetSales = round($todaySales - ($todayReturns + ($todayReturns * $vat)),2);
+
+
+
+
+/* ================= MONTH SALES ================= */
+
+
+$monthInvoicesCount = invoices::whereBetween('created_at',[$monthStart,$today])
+->where('save',1)->count();
+
+
+$monthSales = invoices::whereBetween('created_at',[$monthStart,$today])
+->where('save',1)
+->sum(DB::raw('cashamount + bankamount + creaditamount + Bank_transfer'));
+
+
+
+
+/* ================= DELIVERY (NO TAX) ================= */
+
+
+$todayDeliveryCount = delivery_to_customer_withoud_tax_invoices::whereDate('created_at',$today)
+->where('save',1)->count();
+
+
+$todayDeliverySales = delivery_to_customer_withoud_tax_invoices::whereDate('created_at',$today)
+->where('save',1)
+->sum(DB::raw('cashamount + bankamount + creaditamount + Bank_transfer'));
+
+
+$todayDeliveryReturns = return_sales_deliverys::whereDate('created_at',$today)
+->sum(DB::raw('(return_Unit_Price * return_quantity) - discountvalue - discountoninvoice'));
+
+
+$todayDeliveryNet = round($todayDeliverySales - $todayDeliveryReturns,2);
+
+
+$monthDeliveryCount = delivery_to_customer_withoud_tax_invoices::whereBetween('created_at',[$monthStart,$today])
+->where('save',1)->count();
+
+
+$monthDeliverySales = delivery_to_customer_withoud_tax_invoices::whereBetween('created_at',[$monthStart,$today])
+->where('save',1)
+->sum(DB::raw('cashamount + bankamount + creaditamount + Bank_transfer'));
+
+
+
+
+/* ================= PURCHASES ================= */
+
+
+$todayPurchasesCount = resource_purchases::whereDate('created_at',$today)
+->where('save',1)->count();
+
+
+$todayPurchasesTotal = resource_purchases::whereDate('created_at',$today)
+->where('save',1)
+->sum(DB::raw('In_debt '));
+
+
+$monthPurchasesCount = resource_purchases::whereBetween('created_at',[$monthStart,$today])
+->where('save',1)->count();
+
+$monthPurchasesTotal = resource_purchases::whereBetween('created_at',[$monthStart,$today])
+->where('save',1)->sum(DB::raw('In_debt '));
+
+
+ 
+
+return view('index',compact(
+'todayInvoicesCount','todayNetSales','monthInvoicesCount','monthSales',
+'todayDeliveryCount','todayDeliveryNet','monthDeliveryCount','monthDeliverySales',
+'todayPurchasesCount','todayPurchasesTotal','monthPurchasesCount','monthPurchasesTotal'
+));
+}
+
+
+    
+    
+     
+
+      public function getlastprice_delivery($product_id,$customer_id)
+    {
+       
+    
+      $data_supplier=[];
+    
+foreach(delivery_to_customer_withoud_tax_invoices::where("customer_id", $customer_id)->where('save', 1)->orderby('id','desc')->get() as $invoice){
+
+$saleData = sales_withoud_taxes::where("invoice_id", $invoice->id)->where("product_id", $product_id)->first();
+if(  $saleData!=null){
+         $data_supplier[]=[
+                        'invoiceid'=> $invoice->id ,
+                        'date'=>substr($invoice->created_at,0,10),
+                        'cost'=>$saleData->Unit_Price,
+                        'quantity'=>$saleData->quantity,
+                        ];
+}
+}
+
+        return $data_supplier;
+    
+
+
+    }
+    
+        public function delivery_print_return_Invoice_return($request)
+    {
+        //
+        //  return $request;
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+
+        $saleData = return_sales_deliverys::where("invoice_id", $request)->get();
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($request);
+        $data = [
+
+            'salesData' => $saleData,
+            'invoiceData' =>  $InvoiceData,
+        ];
+        
+        return  view('products.delivery_print_return_Invoice_return', compact('data'));
+    }
+
+     public function return_sale_delivery(Request $request)
+    {
+        //
+        $avtSaleRate = Avt::find(1);
+
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+        $product = sales_withoud_taxes::where('invoice_id', $request->invoice_no)->where('save', 1)->get();
+           $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($request->invoice_no);
+$date1 = new DateTime($InvoiceData->created_at);
+$date2 = new DateTime(date("Y-m-d H:i:s"));
+$diff = $date1->diff($date2);
+$day=$diff->d;
+
+        if (count($product) == 0) {
+            $message = LaravelLocalization::getCurrentLocale() == 'ar' ? '  لم يتم العثور علي فاتورة بهذة الرقم' : 'No invoice with this number was found';
+
+            session()->flash('notfountreturnproduct', $message);
+            $data = [];
+            return view('products.salesreturned_delivery', compact('data'));
+        }else if($day>30){
+             $message = LaravelLocalization::getCurrentLocale() == 'ar' ? '  لم يمكن استرجاع الفاتورة بعد 30 ايام من تاريخ الاصدار ' : 'Refund the invoice after 30 days from the date of issuance';
+
+            session()->flash('notfountreturnproduct', $message);
+            $data = [];
+            return view('products.salesreturned_delivery', compact('data'));
+            
+        }
+         else {
+            $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($request->invoice_no);
+
+            $data = [
+                "invoicetotal_price" => $InvoiceData->Price - $InvoiceData->discount,
+                "invoicetotal_addedvalue" => ($InvoiceData->Price - $InvoiceData->discount) * $avtSaleRate->AVT,
+                "invoicetotal_discount" => $InvoiceData->discount,
+                'product' => $product,
+                'payment' => $InvoiceData->Pay,
+                "invoice_id" => $request->invoice_no
+            ];
+            session()->flash('foundinvoice', '   تم العثور علي فاتورة ');
+
+            return view('products.salesreturned_delivery', compact('data'));
+        }
+    }
+ 
+        public function delivery_product_to_customer(){
+        
+        
+                return view('products.sales_withoud_tax');
+        
+            }   
+
+        public function confirmpaymentconfirmpaymentdelivery_to_customer_withoud_tax_invoices($invoiceId, $cashamount, $bankamount, $creaditamount, $Bank_transfer, $paymentMethod,$customerId,$date2,$date12)
+    {
+        
+        
+      
+        $cashamount ?? 0;
+        $bankamount ?? 0;
+        $creaditamount ?? 0;
+        $Bank_transfer ?? 0;
+            $total_cost=0;
+
+        $invoice = temp_invoice::find($invoiceId);
+        if ($invoice == null) {
+            return [0];
+        }else {
+            if($invoice->update_invoice){
+                
+                delivery_to_customer_withoud_tax_invoices::find($invoice->update_invoice)->update(
+                [
+                    'save' => 1,
+                    'customer_id' => $customerId,
+                    'user_id' => Auth()->user()->id,
+                    'Price' => ($invoice->Price) ,
+                    'Added_Value' => ($invoice->Added_Value),
+                    'Pay' => $invoice->Pay,
+                    'status' => Auth()->user()->branchs_id == $invoice->branchs_id ? 0 : 1,
+                    'branchs_id' => Auth()->User()->branch->id,
+                    'discountOnProduct' => $invoice->discountOnProduct,
+                    'discount' =>$invoice->discount,
+                    'Number_of_Quantity' => $invoice->Number_of_Quantity,
+                    'note' => $invoice->note,
+                    'created_at' => \Carbon\Carbon::now()->addHours(3),
+                    'updated_at' => \Carbon\Carbon::now()->addHours(3),
+                    'morepayment_way' => 1,
+                    'cashamount' => $cashamount,
+                    'bankamount' => $bankamount,
+                    'creaditamount' => $creaditamount,
+                    'Bank_transfer' => $Bank_transfer,
+                    'Pay' => $paymentMethod,
+                    'issue_date' => substr(\Carbon\Carbon::now()->addHours(3), 0, 10),
+                    'issue_time' => substr(\Carbon\Carbon::now()->addHours(3), 12),
+                ]
+            );
+                      $confirminvoice=  delivery_to_customer_withoud_tax_invoices::find($invoice->update_invoice);
+
+            }
+            else{
+          $confirminvoice=  delivery_to_customer_withoud_tax_invoices::create(
+                [
+                    'save' => 1,
+                    'customer_id' => $customerId,
+                    'user_id' => Auth()->user()->id,
+                    'Price' => ($invoice->Price) ,
+                    'Added_Value' => ($invoice->Added_Value),
+                    'Pay' => $invoice->Pay,
+                    'status' => Auth()->user()->branchs_id == $invoice->branchs_id ? 0 : 1,
+                    'branchs_id' => Auth()->User()->branch->id,
+                    'discountOnProduct' => $invoice->discountOnProduct,
+                    'discount' =>$invoice->discount,
+                    'Number_of_Quantity' => $invoice->Number_of_Quantity,
+                    'note' => $invoice->note,
+                    'created_at' => \Carbon\Carbon::now()->addHours(3),
+                    'updated_at' => \Carbon\Carbon::now()->addHours(3),
+                    'morepayment_way' => 1,
+                    'cashamount' => $cashamount,
+                    'bankamount' => $bankamount,
+                    'creaditamount' => $creaditamount,
+                    'Bank_transfer' => $Bank_transfer,
+                    'Pay' => $paymentMethod,
+                    'issue_date' => substr(\Carbon\Carbon::now()->addHours(3), 0, 10),
+                    'issue_time' => substr(\Carbon\Carbon::now()->addHours(3), 12),
+                ]
+            );
+          
+            }
+            foreach (temp_sales::where('invoice_id', $invoiceId)->get() as $sale) {
+                $productdata = products::find($sale->product_id);
+                $total_cost+=$productdata->purchasingـprice*$sale->quantity;
+                if (Auth()->user()->branchs_id == $productdata->branchs_id) {
+                    sales_withoud_taxes::create([
+                        'save' => 1,
+                        'product_id' => $sale->product_id,
+                        'invoice_id' => $confirminvoice->id,
+                        'branch_id' => Auth()->User()->branch->id,
+                        'Discount_Value' => $sale->Discount_Value,
+                        'Added_Value' => ($sale->Added_Value) ,
+                        'Unit_Price' => $sale->Unit_Price,
+                        'reamingQuantity' => $sale->reamingQuantity,
+                        'quantity' => $sale->quantity,
+                        'created_at' => \Carbon\Carbon::now()->addHours(3),
+                        'unit' => $sale->unit,
+
+    ]);
+
+
+
+   if($productdata->products_mix==0){
+    products::where('id', $sale->product_id)->Update([
+
+        'numberofpice' => $productdata->numberofpice - $sale->quantity,
+    ]);
+   }
+   else{
+foreach(products_mix_items::where('products_mix_id',$productdata->products_mix)->get() as $itemmix){
+    $product_chect_mix= products::find( $itemmix->product_id);
+
+    products::where('id', $itemmix->product_id)->Update([
+
+        'numberofpice' => $product_chect_mix->numberofpice - $itemmix->quantity,
+    ]);
+}
+
+
+
+   }
+                  
+
+
+
+                }   else {
+                    sales_withoud_taxes::create([
+                        'save' => 1,
+                        'product_id' => $sale->product_id,
+                        'invoice_id' => $confirminvoice->id,
+                        'branch_id' => Auth()->User()->branch->id,
+                        'Discount_Value' => $sale->Discount_Value,
+                        'Added_Value' => ($sale->Added_Value) ,
+                        'Unit_Price' => $sale->Unit_Price,
+                        'reamingQuantity' => $sale->reamingQuantity,
+                        'quantity' => $sale->quantity,
+                        'created_at' => \Carbon\Carbon::now()->addHours(3),
+    ]);
+                    Delivery_product_to_the_customer::create(
+                        [
+                            'branch_from' => Auth()->user()->branchs_id,
+                            'branch_to' => $productdata->branchs_id,
+                            'user_from' => Auth()->user()->id,
+                            'product_id' => $productdata->id,
+                            'invoice_id' =>$confirminvoice->id,
+                            'quantity' => $sale->quantity,
+                            'status' => 0,
+                            'created_at' => \Carbon\Carbon::now()->addHours(3),
+                        ]
+                    );
+                }
+            }
+
+       if($cashamount){
+
+  $financial_accounts= financial_accounts::find(5);
+    financial_accounts::find(5)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance+$cashamount,
+           'debtor_current'=>$financial_accounts->debtor_current+ $cashamount,
+
+       ]
+       );
+             credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  5,
+                'recive_amount' => $cashamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$cashamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$cashamount,
+              
+
+            ]
+        );
+  
+         
+    $financial_accounts= financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+         'current_balance'=> $financial_accounts->current_balance+$cashamount,
+           'debtor_current'=>$financial_accounts->debtor_current+ $cashamount,
+
+       ]
+       );           credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $cashamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$cashamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$cashamount,
+              
+
+            ]
+        );
+  
+           
+           
+       }
+       
+      if($Bank_transfer+$bankamount){ 
+  $financial_accounts= financial_accounts::find(4);
+    financial_accounts::find(4)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+$Bank_transfer+$bankamount,
+         'debtor_current'=>$financial_accounts->debtor_current+ $Bank_transfer+$bankamount,
+
+     ]
+     ); 
+     
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  4,
+                'recive_amount' => $Bank_transfer+$bankamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$Bank_transfer+$bankamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$Bank_transfer+$bankamount,
+              
+
+            ]
+        );
+  
+             $financial_accounts= financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance+$Bank_transfer+$bankamount,
+         'debtor_current'=>$financial_accounts->debtor_current+ $Bank_transfer+$bankamount,
+
+       ]
+       ); 
+       
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $Bank_transfer+$bankamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$Bank_transfer+$bankamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$Bank_transfer+$bankamount,
+              
+
+            ]
+        );
+    
+           
+           
+       }
+
+// new addition 2024-12-9
+
+
+$total_value=$Bank_transfer+$creaditamount+$bankamount+$cashamount;
+
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(112);
+    financial_accounts::find(112)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+($total_value*100/115),
+         'creditor_current'=>$financial_accounts->creditor_current+($total_value*100/115),
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+     ]
+     ); 
+credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  112,
+                'recive_amount' => ($total_value*100/115),
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+($total_value*100/115),
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> ($total_value*100/115),
+                'debtor'=>0
+
+            ]
+        );
+
+
+               $financial_accounts= financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance+($total_value*100/115),
+         'creditor_current'=>$financial_accounts->creditor_current+($total_value*100/115),
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+       ]
+       ); 
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => ($total_value*100/115),
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+($total_value*100/115),
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> ($total_value*100/115),
+                'debtor'=>0
+
+            ]
+        );
+
+
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(183);
+    financial_accounts::find(183)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+$total_cost,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_cost,
+
+     ]
+     ); 
+      credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  183,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost
+
+            ]
+        );
+
+
+             $financial_accounts= financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance+$total_cost,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_cost,
+
+       ]
+       ); 
+
+
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost
+
+            ]
+        );
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(181);
+    financial_accounts::find(181)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance-$total_cost,
+         'creditor_current'=>$financial_accounts->creditor_current+ $total_cost,
+
+     ]
+     ); 
+      credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  181,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost,
+                'debtor'=>0
+
+            ]
+        );
+
+               $financial_accounts= financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance-$total_cost,
+        'creditor_current'=>$financial_accounts->creditor_current+ $total_cost,
+
+       ]
+       ); 
+  credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost,
+                'debtor'=>0
+
+            ]
+        );
+
+
+
+// end addition
+
+
+
+ 
+     
+     
+            if ($creaditamount != 0 || $creaditamount != null) {
+                $customerdata = customers::find($customerId);
+
+                $updateCustomer = customers::where('id', $customerId)->update(
+                    [
+                        'Balance' => $customerdata->Balance + ($creaditamount)
+                    ]
+                );
+  
+  
+     $financial_accounts= financial_accounts::where('orginal_type',1)->where('orginal_id',$customerId)->first();
+   
+         financial_accounts::where('orginal_type',1)->where('orginal_id',$customerId)->update(
+     [
+         'current_balance'=>$financial_accounts->current_balance+($creaditamount),
+         'debtor_current'=>$financial_accounts->debtor_current+ $creaditamount,
+
+     ]
+     ); 
+     
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $creaditamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$creaditamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$creaditamount
+
+            ]
+        );
+
+
+            }
+            $updateCustomer = customers::find($customerId);
+            delivery_to_customer_withoud_tax_invoices::find($confirminvoice->id)->update(
+                [
+                    'currentblance' =>$updateCustomer->Balance,
+
+                ]
+            );
+        }
+        return $confirminvoice->id;
+    
+    
+        
+        
+        
+        
+        
+        
+    }
+    
+    
+    public function showInvoiceRecentdelivery($request)
+    {
+        //
+        //  return $request;
+
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+        $avtSaleRate = Avt::find(1);
+
+        $saleData = sales_withoud_taxes::where("invoice_id", $request)->where('quantity', '!=', 0)->get();
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($request);
+  $totAL=round(($InvoiceData->Price - $InvoiceData->discount),2);
+                 $totAL= number_format($totAL, 2);
+
+
+        list($whole, $decimal) = explode('.',str_replace(",","",$totAL));
+         $numberToWord = new NumberToWord();
+         $check=str_split($decimal);
+         if($check[0]=="0"){
+           $decimal =(int)$check[1] ;
+         }
+         else{
+        $decimal =$decimal ;
+ 
+         }
+      $setting=system_setting::find(1);
+             $Total_Amount=$InvoiceData->Bank_transfer +  $InvoiceData->creaditamount + $InvoiceData->bankamount + $InvoiceData->cashamount;
+
+         $data = [
+            $setting->name_ar,
+            $setting->Tax,
+            (string)$InvoiceData->issue_date . 'T' . (string)$InvoiceData->issue_time,
+            number_format(($Total_Amount),2,'.',''),
+            number_format( (($Total_Amount*100/(100+($avtSaleRate->AVT*100)))) * $avtSaleRate->AVT,2,'.',''),
+        ];
+        $data[] = '';
+        $data[] ='';
+        $data[] = '';
+        $data[] = '';
+    
+        $data = [
+            "invoicetotal_price" =>  number_format(($Total_Amount*100/(100+($avtSaleRate->AVT*100))),2,'.',''),
+            "invoicetotal_addedvalue" =>  number_format( (($Total_Amount*100/(100+($avtSaleRate->AVT*100)))) * $avtSaleRate->AVT,2,'.',''),
+            "invoicetotal_discount" => $InvoiceData->discount,
+            'salesData' => $saleData,
+            'invoiceData' =>  $InvoiceData,
+         'totatextlriyales'=>NumToArabic::number2Word(round((int)$whole,2)) .'  ريال',
+            'totatextlrihalala'=>$decimal!='00'?NumToArabic::number2Word(round((int)$decimal,2)). '   هللة':'فقط', 
+
+        ];
+
+        return  view('products.printInvoicesReturnToClientRecentSales_delivery', compact('data'));
+    }
+
+    
+    public function print_Invoice_withod_tax(Request $request)
+    {
+        //
+        //  return $request;
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+        if ($request->show_invoice_number == null) {
+            $products = products::where('branchs_id', Auth()->User()->branchs_id)->paginate(20);
+            session()->flash('nodataprint', '');
+
+            return view('products.sales', compact('products'));
+        }
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+        $avtSaleRate = Avt::find(1);
+
+
+        $saleData = sales_withoud_taxes::where("invoice_id", $request->show_invoice_number)->where('quantity', '!=', 0)->get();
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($request->show_invoice_number);
+        $totAL=round($InvoiceData->Price - $InvoiceData->discount);
+                 $totAL= number_format($totAL, 2);
+
+
+    list($whole, $decimal) = explode('.',str_replace(",","",$totAL));
+         $numberToWord = new NumberToWord();
+         $check=str_split($decimal);
+         if($check[0]=="0"){
+           $decimal =(int)$check[1] ;
+         }
+         else{
+        $decimal =$decimal ;
+ 
+         }
+             $setting=system_setting::find(1);
+             $Total_Amount=$InvoiceData->Bank_transfer +  $InvoiceData->creaditamount + $InvoiceData->bankamount + $InvoiceData->cashamount;
+
+         $data = [
+            $setting->name_ar,
+            $setting->Tax,
+            (string)$InvoiceData->issue_date . 'T' . (string)$InvoiceData->issue_time,
+            number_format(($Total_Amount),2,'.',''),
+            number_format( (($Total_Amount*100/(100+($avtSaleRate->AVT*100)))) * $avtSaleRate->AVT,2,'.',''),
+        ];
+        $data[] = '';
+        $data[] ='';
+        $data[] = '';
+        $data[] = '';
+  
+        $data = [
+            
+            "invoicetotal_price" => $InvoiceData->Price - $InvoiceData->discount,
+            "invoicetotal_addedvalue" => ($InvoiceData->Price - $InvoiceData->discount) * $avtSaleRate->AVT,
+            "invoicetotal_discount" => $InvoiceData->discount,
+            'salesData' => $saleData,
+            'invoiceData' =>  $InvoiceData,
+            'totatextlriyales'=>NumToArabic::number2Word(round((int)$whole,2)) .'  ريال',
+            'totatextlrihalala'=>$decimal!='00'?NumToArabic::number2Word(round((int)$decimal,2)). '   هللة':'فقط', 
+
+        ];
+
+
+
+        return  view('products.print_Invoice_withod_tax', compact('data'));
+    }
+
+    public function update_return_sale_delivery(Request $request)
+    {
+        //
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+        $avtSaleRate = Avt::find(1);
+        $returnshabkavalue = 0;
+        $saleData = sales_withoud_taxes::find($request->id);
+        //return $saleData;
+        $updateProduct = products::find($saleData->product_id);
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($saleData->invoice_id);
+        $total_cost_value=$updateProduct->purchasingـprice*$request->return_quentity;
+        $paymentMethod=$InvoiceData->Pay;
+
+        if ($updateProduct->branchs_id == $InvoiceData->branchs_id) {
+            products::where('id', $saleData->product_id)->Update([
+                'numberofpice' => $updateProduct->numberofpice + $request->return_quentity,
+                'numberـofـsales' => $updateProduct->numberـofـsales - $request->return_quentity
+            ]);
+            $message = LaravelLocalization::getCurrentLocale() == 'ar' ? "تم عملية الاسترجاع بنجاح شكرا" : "The recovery process was successful. Thank you.";
+            session()->flash('success', $message);
+        } else {
+             Delivery_product_to_the_customer::where('invoice_id', $saleData->invoice_id)->where('product_id', $saleData->product_id)->update(
+                [
+                    'quantity' => $saleData->quantity - $request->return_quentity,
+                    'updated_at' => \Carbon\Carbon::now()->addHours(3),
+                ]
+            );
+            $mproduct = products::where('branchs_id', $InvoiceData->branchs_id)->where('Product_Code', $updateProduct->Product_Code)->first();
+            if ($mproduct != null) {
+                products::where('branchs_id', $InvoiceData->branchs_id)->where('Product_Code', $updateProduct->Product_Code)->Update([
+                    'numberofpice' => $mproduct->numberofpice + $request->return_quentity,
+                    'purchasingـprice' => $updateProduct->purchasingـprice,
+
+                ]);
+                $message = LaravelLocalization::getCurrentLocale() == 'ar' ? "تم عملية الاسترجاع بنجاح شكرا" : "The recovery process was successful. Thank you.";
+                session()->flash('success', $message);
+            } else {
+                $product = sales_withoud_taxes
+                ::where('invoice_id', $saleData->invoice_id)->get();
+                $InvoiceData = delivery_to_customer_withoud_tax_invoices::where('id',  $saleData->invoice_id)->first();
+                //return $product;
+
+                $newproducts = products::create(
+                    [
+                        'product_name' => $updateProduct->product_name,
+                        'name_en' => $updateProduct->name_en,
+                        'branchs_id' => $InvoiceData->branchs_id,
+                        'user_id' => Auth()->User()->id,
+                        'Product_Location' => $updateProduct->Product_Location,
+                        'Product_Code' => $updateProduct->Product_Code,
+                        'purchasingـprice' => $updateProduct->purchasingـprice,
+                        'average_cost' => $updateProduct->purchasingـprice,
+                        'Status' => 1,
+                        'notes' => $updateProduct->notes,
+                        'unit' => $updateProduct->unit,
+                        'minmum_quantity_stock_alart' => $updateProduct->minmum_quantity_stock_alart,
+                    ]
+                );
+                $productname = $updateProduct->product_name;
+
+                $message = LaravelLocalization::getCurrentLocale() == 'ar' ?  "  تم عملية الاسترجاع. المنتج المسترجع غير مسجل لديكم مسبقا تم تسجيل  " . $productname . "  بنفس رقم المنتج  شكرا  " : "The product is not previously registered. It has been registered with a name " . $productname . " and a product number, such as the number ";
+                products::where('id', $newproducts->id)->Update([
+                    'numberofpice' =>  $request->return_quentity,
+                ]);
+                session()->flash('createnewproduct', $message);
+            }
+        }
+
+
+
+        $saleData = sales_withoud_taxes::find($request->id);
+
+
+
+        $finddsalefordiscount = sales_withoud_taxes::find($request->id);
+
+
+        $invicedis = delivery_to_customer_withoud_tax_invoices::find($saleData->invoice_id);
+        if (count(sales_withoud_taxes::where('invoice_id', $saleData->invoice_id)->where('quantity', '!=', 0)->get()) == 1 &&(($finddsalefordiscount->quantity - $request->return_quentity)==0)) {
+            $return_sales = return_sales_deliverys::create([
+                'product_id' => $saleData->product_id,
+                'invoice_id' => $saleData->invoice_id,
+                'branch_id' => Auth()->User()->branch->id,
+                'return_Added_Value' => $saleData->Added_Value,
+                'return_Unit_Price' => $saleData->Unit_Price,
+                'discountvalue' => $finddsalefordiscount->Discount_Value,
+                'discountoninvoice' => $invicedis->discount - $finddsalefordiscount->Discount_Value,
+                'returnshabkavalue' => $returnshabkavalue ?? 0,
+                'return_quantity' => $request->return_quentity,
+                'created_at' => \Carbon\Carbon::now()->addHours(3),
+
+            ]);
+        } else {
+            $return_sales = return_sales_deliverys::create([
+                'product_id' => $saleData->product_id,
+                'invoice_id' => $saleData->invoice_id,
+                'branch_id' => Auth()->User()->branch->id,
+                'return_Added_Value' => $saleData->Added_Value,
+                'return_Unit_Price' => $saleData->Unit_Price,
+                'discountvalue' => $saleData->Discount_Value,
+                'returnshabkavalue' => $returnshabkavalue,
+                'return_quantity' => $request->return_quentity,
+                'created_at' => \Carbon\Carbon::now()->addHours(3),
+
+            ]);
+        }
+
+
+
+
+        sales_withoud_taxes::find($request->id)->update(
+            [
+                'quantity' => $finddsalefordiscount->quantity - $request->return_quentity,
+                'quantityreturn' => $finddsalefordiscount->quantityreturn + $request->return_quentity,
+                'Discount_Value' => 0
+            ]
+        );
+
+
+
+         $invoicedatarecent=delivery_to_customer_withoud_tax_invoices::find($saleData->invoice_id);
+         $NOTICE_Number=0;
+        if($invoicedatarecent->NOTICE_Number!=0){
+        $NOTICE_Number=$invoicedatarecent->NOTICE_Number;
+
+        }
+        else{
+        $recentreturn=delivery_to_customer_withoud_tax_invoices::where('id','!=',$saleData->invoice_id)->where('NOTICE_Number','!=',0)->orderBy('NOTICE_Number', 'DESC')->first();
+        $NOTICE_Number=$recentreturn==null?1:$recentreturn->NOTICE_Number+1;
+        }
+
+        //  return  $return_sales;
+        $Invoice = delivery_to_customer_withoud_tax_invoices::where('id',  $saleData->invoice_id)->Update(
+            [
+                'Price' => round($InvoiceData->Price - (($saleData->Unit_Price * $request->return_quentity) ), 2),
+                'Added_Value' => round($InvoiceData->Added_Value - ((($saleData->Unit_Price * $request->return_quentity) - $saleData->Discount_Value) * $avtSaleRate->AVT), 2),
+                'Number_of_Quantity' => $InvoiceData->Number_of_Quantity - $request->return_quentity,
+                'updated_at' => \Carbon\Carbon::now()->addHours(3),
+                'NOTICE_Number'=>$NOTICE_Number
+
+            ]
+        );
+        $Invoice = delivery_to_customer_withoud_tax_invoices::where('id',  $saleData->invoice_id)->Update(
+            [
+                'discountOnInvoice' => $InvoiceData->discount - $saleData->Discount_Value,
+                'discount' => $InvoiceData->discount - $saleData->Discount_Value,
+                'payment_return'=>$request->pay_return_sale
+            ]
+        );
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($saleData->invoice_id);
+        $customerdata = customers::find($InvoiceData->customer_id);
+
+        if ($InvoiceData->Number_of_Quantity == 0) {
+            $Invoice = delivery_to_customer_withoud_tax_invoices::where('id',  $saleData->invoice_id)->Update(
+                [
+                    'Price' => 0,
+                    'Added_Value' => 0,
+                    'discount' => 0,
+
+                ]
+            );
+
+$total_value=(($request->return_quentity * $saleData->Unit_Price) -  $InvoiceData->discountOnInvoice);
+$total_tax=0;
+$paymentMethod=$request->pay_return_sale;
+
+        if ($request->pay_return_sale== "Shabka" ||$request->pay_return_sale == "Bank_transfer" ) {
+            
+            
+
+            $financial_accounts= financial_accounts::find(4);
+    financial_accounts::find(4)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+      ] ); 
+             
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  4,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع مبيعات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+       
+    $financial_accounts= financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+         'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+       ]
+       ); 
+       
+       
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+        
+
+            
+            
+        }
+
+        elseif ($request->pay_return_sale == "Cash") {
+
+            $financial_accounts= financial_accounts::find(5);
+    financial_accounts::find(5)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+      ] ); 
+             
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  5,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+       
+    $financial_accounts= financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+         'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+       ]
+       ); 
+       
+       
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+        
+}else{
+                $updateCustomer = customers::where('id', $InvoiceData->customer_id)->update(
+                    [
+                        'Balance' => $customerdata->Balance-$total_tax-$total_value,
+                        'updated_at' => \Carbon\Carbon::now()->addHours(3),
+
+                    ]
+                );
+                
+                    
+    $financial_accounts= financial_accounts::where('orginal_type',1)->where('orginal_id',$InvoiceData->customer_id)->first();
+   financial_accounts::where('orginal_type',1)->where('orginal_id',$InvoiceData->customer_id)->update(
+     [
+                        'current_balance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                        'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+     ]
+     ); 
+     
+     
+     
+              credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+            }
+            
+            
+          
+          
+          
+
+
+// new addition 2024-12-9
+
+$total_tax=$total_tax;
+$total_withoud_tax=$total_value ;
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(112);
+    financial_accounts::find(112)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance-$total_withoud_tax,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_withoud_tax,
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+     ]
+     ); 
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  112,
+                'recive_amount' => $total_withoud_tax,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=> $financial_accounts->current_balance-$total_withoud_tax,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>0,
+                'debtor'=>$total_withoud_tax
+
+            ]
+        );
+
+               $financial_accounts= financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+      'current_balance'=> $financial_accounts->current_balance-$total_withoud_tax,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_withoud_tax,
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+       ]
+       ); 
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_withoud_tax,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=> $financial_accounts->current_balance-$total_withoud_tax,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>0,
+                'debtor'=>$total_withoud_tax
+
+            ]
+        );
+
+
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(183);
+    financial_accounts::find(183)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance-$total_cost_value,
+         'creditor_current'=>$financial_accounts->creditor_current+$total_cost_value,
+
+     ]
+     ); 
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  183,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost_value,
+                'debtor'=>0
+
+            ]
+        );
+
+
+           $financial_accounts= financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+       'current_balance'=> $financial_accounts->current_balance-$total_cost_value,
+         'creditor_current'=>$financial_accounts->creditor_current+$total_cost_value,
+
+       ]
+       ); 
+
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost_value,
+                'debtor'=>0
+
+            ]
+        );
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(181);
+    financial_accounts::find(181)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+$total_cost_value,
+         'debtor_current'=>$financial_accounts->debtor_current+ $total_cost_value,
+
+     ]
+     ); 
+     credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  181,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost_value
+
+            ]
+        );
+
+
+              $financial_accounts= financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+    'current_balance'=> $financial_accounts->current_balance+$total_cost_value,
+         'debtor_current'=>$financial_accounts->debtor_current+ $total_cost_value,
+
+       ]
+       ); 
+  credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost_value
+
+            ]
+        );
+
+
+
+// end addition
+  
+            
+            
+            
+        } else {
+            
+            
+
+
+
+
+
+
+
+
+
+
+$total_value=(($request->return_quentity * $saleData->Unit_Price) -  $saleData->Discount_Value);
+$total_tax= 0;
+$paymentMethod=$request->pay_return_sale;
+        if ($request->pay_return_sale == "Shabka" ||$request->pay_return_sale == "Bank_transfer" ) {
+
+            $financial_accounts= financial_accounts::find(4);
+    financial_accounts::find(4)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+      ] ); 
+      
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  4,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع مبيعات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+    $financial_accounts= financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+       ]
+       );    
+       
+       
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                                'user_id' => Auth()->user()->id,
+
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع مبيعات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+       
+       
+        
+}
+  
+        if ( $request->pay_return_sale== "Cash" ) {
+
+            $financial_accounts= financial_accounts::find(5);
+    financial_accounts::find(5)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+      ] ); 
+      
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  5,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+    $financial_accounts= financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance-$total_tax-$total_value,
+          'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+
+       ]
+       );    
+       
+       
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                                'user_id' => Auth()->user()->id,
+
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+       
+       
+        
+}
+  
+            if ($InvoiceData->Pay == "Credit") {
+                $updateCustomer = customers::where('id', $InvoiceData->customer_id)->update(
+                    [
+                        'Balance' => $customerdata->Balance-$total_tax-$total_value,
+                        'updated_at' => \Carbon\Carbon::now()->addHours(3),
+
+                    ]
+                );
+                
+                    
+    $financial_accounts= financial_accounts::where('orginal_type',1)->where('orginal_id',$InvoiceData->customer_id)->first();
+   financial_accounts::where('orginal_type',1)->where('orginal_id',$InvoiceData->customer_id)->update(
+     [
+                        'current_balance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                        'creditor_current'=>$financial_accounts->creditor_current+$total_tax+$total_value
+     ]
+     ); 
+     
+     
+     
+              credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' =>  +$total_tax+$total_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_tax-$total_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>  $total_tax+$total_value,
+                'debtor'=>0,
+              
+
+            ]
+        );
+  
+            }
+            
+            
+          
+          
+          
+
+
+// new addition 2024-12-9
+
+$total_tax=0;
+$total_withoud_tax=$total_value ;
+
+
+
+
+  $financial_accounts= financial_accounts::find(112);
+    financial_accounts::find(112)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance-$total_withoud_tax,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_withoud_tax,
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+     ]
+     ); 
+    
+    
+    
+
+        credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  112,
+                'recive_amount' => $total_withoud_tax,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=> $financial_accounts->current_balance-$total_withoud_tax,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>0,
+                'debtor'=>$total_withoud_tax
+
+            ]
+        );
+
+                $financial_accounts= financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance-$total_withoud_tax,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_withoud_tax,
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+       ]
+       ); 
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_withoud_tax,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=> $financial_accounts->current_balance-$total_withoud_tax,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=>0,
+                'debtor'=>$total_withoud_tax
+
+            ]
+        );
+
+
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(183);
+    financial_accounts::find(183)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance-$total_cost_value,
+         'creditor_current'=>$financial_accounts->creditor_current+$total_cost_value,
+
+     ]
+     ); 
+     
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  183,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost_value,
+                'debtor'=>0
+
+            ]
+        );
+
+
+           $financial_accounts= financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+          'current_balance'=> $financial_accounts->current_balance-$total_cost_value,
+         'creditor_current'=>$financial_accounts->creditor_current+$total_cost_value,
+
+       ]
+       ); 
+
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost_value,
+                'debtor'=>0
+
+            ]
+        );
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(181);
+    financial_accounts::find(181)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+$total_cost_value,
+         'debtor_current'=>$financial_accounts->debtor_current+ $total_cost_value,
+
+     ]
+     ); 
+       credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  181,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost_value
+
+            ]
+        );
+
+
+              $financial_accounts= financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+       'current_balance'=> $financial_accounts->current_balance+$total_cost_value,
+         'debtor_current'=>$financial_accounts->debtor_current+ $total_cost_value,
+
+       ]
+       ); 
+  credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost_value,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة مرتجع تسليمات رقم :'.(string) $InvoiceData->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost_value,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost_value
+
+            ]
+        );
+        }
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($saleData->invoice_id);
+
+        $productconvert = [];
+        $product = sales_withoud_taxes::where('invoice_id', $saleData->invoice_id)->get();
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::where('id',  $saleData->invoice_id)->first();
+        $i = 0;
+        foreach ($product as $item) {
+            $i++;
+            if ($item->quantity > 0) {
+                $productconvert[] = [
+                    'count' => $i,
+                    'Product_Code' => $item->productData->Product_Code,
+                    'product_name' => $item->productData->product_name,
+                    'quantity' => $item->quantity,
+                    'Unit_Price' => $item->Unit_Price,
+                    'Discount_Value' => $item->Discount_Value,
+                    "id" => $item->id
+
+
+                ];
+            }
+        }
+        $data = [
+            "invoicetotal_price" => $InvoiceData->Price - $InvoiceData->discount,
+            "invoicetotal_addedvalue" => round(($InvoiceData->Price - $InvoiceData->discount) * $avtSaleRate->AVT, 2),
+            "invoicetotal_discount" => $InvoiceData->discount,
+            'total' => round(($InvoiceData->Price - $InvoiceData->discount) + ($InvoiceData->Price - $InvoiceData->discount) * $avtSaleRate->AVT, 2),
+            'product' => $productconvert,
+            "invoice_id" => $saleData->invoice_id,
+            "message" => $message
+        ];
+        return $data;
+    }
+
+
+      public function save_delivery_sale(Request $request){
+        
+        
+      
+$cashamount=0;
+$bankamount = 0;
+$creaditamount = 0;
+$Bank_transfer = 0;
+$customerId=$request->clientnamesearch;
+$paymentMethod=$request->payment_type;
+        if($request->payment_type=='Cash'){
+        $cashamount=$request->grandTotal;
+    }elseif($request->payment_type=='Shabka'){
+        $bankamount=$request->grandTotal;
+
+    }elseif($request->payment_type=='Bank_transfer'){
+        $Bank_transfer=$request->grandTotal;
+
+    }else{
+        $creaditamount=$request->grandTotal;
+    }
+
+      
+     
+     if($request->show_invoice_number_update==0){
+          $confirminvoice=  delivery_to_customer_withoud_tax_invoices::create( 
+                [
+                    'save' => 1,
+                    'customer_id' => $customerId,
+                    'user_id' => Auth()->user()->id,
+                    'Price' => ($request->totalSum) ,
+                    'Added_Value' => 0 ,
+                    'Pay' => $paymentMethod,
+                    'status' => Auth()->user()->branchs_id == $request->branchs_id ? 0 : 1,
+                    'branchs_id' => Auth()->User()->branch->id,
+                    'discountOnProduct' => $request->totaldiscound-$request->discound_on_invoice??0,
+                    'discount' =>$request->totaldiscound,
+                    'Number_of_Quantity' => 0,
+                    'note' => $request->notes,
+                   'created_at'  =>\Carbon\Carbon::now()->addHours(3),
+                    'updated_at' => \Carbon\Carbon::now()->addHours(3),
+                    'morepayment_way' => 1,
+                    'cashamount' => $cashamount,
+                    'bankamount' => $bankamount,
+                    'creaditamount' => $creaditamount,
+                    'Bank_transfer' => $Bank_transfer,
+                    'issue_date' => substr(\Carbon\Carbon::now()->addHours(3), 0, 10),
+                    'issue_time' => substr(\Carbon\Carbon::now()->addHours(3), 12),
+                    'p_o'=>$request->p_o,
+                    'display_number'=>$request->shownumberproduct
+
+
+                ]
+            );
+     }
+
+     else{
+
+
+                $invoiceNumber=$request->show_invoice_number_update;
+                                        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($invoiceNumber);
+
+        
+                                      $products = sales_withoud_taxes::where('invoice_id', $invoiceNumber)->get();
+
+               credittransactions::where('note',   '  فاتورة تسليم منتج رقم :'.(string) $invoiceNumber  )->delete();
+                
+  
+              if ($InvoiceData->Pay == 'Credit') {
+            $customerdata = customers::find($InvoiceData->customer_id);
+            $avt = Avt::find(1);
+            $saleavt = $avt->AVT;
+            $updateCustomer = customers::where('id', $InvoiceData->customer_id)->update(
+                [
+                    'Balance' => $customerdata->Balance - (($InvoiceData->Price - $InvoiceData->discount))
+                ]
+            );
+       
+     
+            
+         
+        }
+        
+        
+                        foreach($products as $item){
+                    
+              
+                     $updateProduct=products::find($item->product_id);
+                     products::find($item->product_id)->update([
+                         'numberofpice'=>$updateProduct->numberofpice   +$item->quantity
+                         ]);
+  
+                }
+    
+        
+            sales_withoud_taxes::where('invoice_id', $invoiceNumber)->delete();
+
+      
+    
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+        $InvoiceData = delivery_to_customer_withoud_tax_invoices::find($invoiceNumber);
+        $invicedis =$InvoiceData;
+         $discount_value_invoice=0;
+
+        $saleData = sales_withoud_taxes::where('invoice_id', $invoiceNumber)->get();
+        $count = count($saleData);
+
+        //  return   $saleData;
+        $total_cost_value=0;
+
+        if ($invicedis->Pay== "Shabka" ||$invicedis->Pay == "Bank_transfer" ) {
+
+
+            $financial_accounts= financial_accounts::find(4);
+    financial_accounts::find(4)->update(
+       [
+            'debtor_current'=>$financial_accounts->debtor_current- (($invicedis->Price - $invicedis->discount) ),
+
+       ]
+       ); 
+       
+
+         
+         $financial_accounts= financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+            'debtor_current'=>$financial_accounts->debtor_current- (($invicedis->Price - $invicedis->discount)),
+
+       ]
+       ); 
+       
+
+
+}
+
+
+
+        if ($invicedis->Pay == "Cash" ) {
+
+            $financial_accounts= financial_accounts::find(5);
+    financial_accounts::find(5)->update(
+       [
+            'debtor_current'=>$financial_accounts->debtor_current- (($invicedis->Price - $invicedis->discount) ),
+
+       ]
+       ); 
+       
+         $financial_accounts= financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+            'debtor_current'=>$financial_accounts->debtor_current- (($invicedis->Price - $invicedis->discount) ),
+
+       ]
+       ); 
+       
+
+
+}
+
+  
+        if ($invicedis->Pay == "Credit") {
+            $avtSaleRate = Avt::find(1);
+    $financial_accounts= financial_accounts::where('orginal_type',1)->where('orginal_id',$InvoiceData->customer_id)->first();
+   financial_accounts::where('orginal_type',1)->where('orginal_id',$InvoiceData->customer_id)->update(
+     [
+         'debtor_current'=>$financial_accounts->debtor_current- (($invicedis->Price - $invicedis->discount) ),
+
+     ]
+     ); 
+        }
+
+
+$total_withoud_tax=($invicedis->Price - $invicedis->discount) ;
+
+
+
+
+  $financial_accounts= financial_accounts::find(112);
+    financial_accounts::find(112)->update(
+     [
+         'creditor_current'=>$financial_accounts->creditor_current-$total_withoud_tax,
+     ]
+     ); 
+   
+
+
+               $financial_accounts= financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+         'creditor_current'=>$financial_accounts->creditor_current-$total_withoud_tax,
+       ]
+       ); 
+
+
+  $financial_accounts= financial_accounts::find(183);
+    financial_accounts::find(183)->update(
+     [
+         'creditor_current'=>$financial_accounts->creditor_current-$total_cost_value,
+
+     ]
+     ); 
+     
+    $financial_accounts= financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+         'debtor_current'=>$financial_accounts->debtor_current+$total_cost_value,
+
+       ]
+       ); 
+
+  $financial_accounts= financial_accounts::find(181);
+    financial_accounts::find(181)->update(
+     [
+         'creditor_current'=>$financial_accounts->creditor_current- $total_cost_value,
+
+     ]
+     ); 
+
+
+    $financial_accounts= financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+         'creditor_current'=>$financial_accounts->creditor_current- $total_cost_value,
+
+       ]
+       ); 
+
+
+
+
+
+           $confirminvoice=  delivery_to_customer_withoud_tax_invoices::find($invoiceNumber)->update( 
+                [
+                    'save' => 1,
+                    'customer_id' => $customerId,
+                    'user_id' => Auth()->user()->id,
+                    'Price' => ($request->totalSum) ,
+                    'Added_Value' => 0,
+                    'Pay' => $paymentMethod,
+                    'status' => Auth()->user()->branchs_id == $request->branchs_id ? 0 : 1,
+                    'branchs_id' => Auth()->User()->branch->id,
+                    'discountOnProduct' => $request->totaldiscound-$request->discound_on_invoice??0,
+                    'discount' =>$request->totaldiscound,
+                    'Number_of_Quantity' => 0,
+                    'note' => $request->notes,
+                   'created_at'  =>\Carbon\Carbon::now()->addHours(3),
+                    'updated_at' => \Carbon\Carbon::now()->addHours(3),
+                    'morepayment_way' => 1,
+                    'cashamount' => $cashamount,
+                    'bankamount' => $bankamount,
+                    'creaditamount' => $creaditamount,
+                    'Bank_transfer' => $Bank_transfer,
+                    'issue_date' => substr(\Carbon\Carbon::now()->addHours(3), 0, 10),
+                    'issue_time' => substr(\Carbon\Carbon::now()->addHours(3), 12),
+                    'p_o'=>$request->p_o,
+                    'display_number'=>$request->shownumberproduct
+
+
+                ]
+            );
+          
+         $confirminvoice=  delivery_to_customer_withoud_tax_invoices::find($invoiceNumber);
+         
+         
+         
+     
+
+
+
+
+     }
+           //end2026 
+
+$total_cost=0;
+
+            foreach($request->products as $sale) {
+                $productdata = products::find($sale['product_id']);
+                $total_cost+=$productdata->purchasingـprice??0*$sale['quentity'];
+                if (Auth()->user()->branchs_id == $productdata->branchs_id) {
+              sales_withoud_taxes::create([
+                        'user_id' => Auth()->user()->id,
+
+                        'save' => 1,
+                        'product_id' => $sale['product_id'],
+                        'invoice_id' => $confirminvoice->id,
+                        'branch_id' => Auth()->User()->branch->id,
+                        'Discount_Value' => $sale['discound'],
+                        'Added_Value' => 0 ,
+                        'Unit_Price' => $sale['price'],
+                        'reamingQuantity' =>$productdata->numberofpice - $sale['quentity'],
+                        'quantity' => $sale['quentity'],
+                        'created_at' => \Carbon\Carbon::now()->addHours(3),
+    ]);
+
+
+
+    products::where('id', $sale['product_id'])->Update([
+
+        'numberofpice' => $productdata->numberofpice - $sale['quentity'],
+    ]);
+   
+
+                  
+
+
+
+                }   else {
+                    
+                       delivery_to_customer_withoud_tax_invoices::find($confirminvoice->id)->update([
+                         'status' =>1
+                         ]);
+sales_withoud_taxes::create([
+                       'user_id' => Auth()->user()->id,
+                        'save' => 1,
+                        'product_id' => $request->product_id,
+                        'invoice_id' => $confirminvoice->id,
+                        'branch_id' => Auth()->User()->branch->id,
+                        'Discount_Value' => $sale['discound'],
+                        'Added_Value' => 0 ,
+                        'Unit_Price' => $sale['price'],
+                        'reamingQuantity' =>$productdata->numberofpice - $request->quentity,
+                        'quantity' => $sale['quentity'],
+                        'created_at' => \Carbon\Carbon::now()->addHours(3),
+    ]);
+                    Delivery_product_to_the_customer::create(
+                        [
+                            'branch_from' => Auth()->user()->branchs_id,
+                            'branch_to' => $productdata->branchs_id,
+                            'user_from' => Auth()->user()->id,
+                            'product_id' => $productdata->id,
+                            'invoice_id' =>$confirminvoice->id,
+                            'quantity' => $sale['quentity'],
+                            'status' => 0,
+                            'created_at' => \Carbon\Carbon::now()->addHours(3),
+                        ]
+                    );
+                }
+            }
+            
+            
+            
+            
+            
+            
+            
+            
+            
+       
+
+       if($cashamount){
+
+  $financial_accounts= financial_accounts::find(5);
+    financial_accounts::find(5)->update(
+       [
+           'current_balance'=> $financial_accounts->current_balance+$cashamount,
+           'debtor_current'=>$financial_accounts->debtor_current+ $cashamount,
+
+       ]
+       );
+             credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  5,
+                'recive_amount' => $cashamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$cashamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$cashamount,
+              
+
+            ]
+        );
+  
+         
+    $financial_accounts= financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',5)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+         'current_balance'=> $financial_accounts->current_balance+$cashamount,
+           'debtor_current'=>$financial_accounts->debtor_current+ $cashamount,
+
+       ]
+       );           credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $cashamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$cashamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$cashamount,
+              
+
+            ]
+        );
+  
+          
+                    $financial_accounts= financial_accounts::where('orginal_type',1)->where('orginal_id',$customerId)->first();
+
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $cashamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$creaditamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>0
+
+            ]
+        );
+
+             
+           
+       }
+       
+      if($Bank_transfer+$bankamount){ 
+  $financial_accounts= financial_accounts::find(4);
+    financial_accounts::find(4)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+$Bank_transfer+$bankamount,
+         'debtor_current'=>$financial_accounts->debtor_current+ $Bank_transfer+$bankamount,
+
+     ]
+     ); 
+     
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  4,
+                'recive_amount' => $Bank_transfer+$bankamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$Bank_transfer+$bankamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$Bank_transfer+$bankamount,
+              
+
+            ]
+        );
+  
+             $financial_accounts= financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',4)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance+$Bank_transfer+$bankamount,
+         'debtor_current'=>$financial_accounts->debtor_current+ $Bank_transfer+$bankamount,
+
+       ]
+       ); 
+       
+          credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $Bank_transfer+$bankamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$Bank_transfer+$bankamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$Bank_transfer+$bankamount,
+              
+
+            ]
+        );
+    
+                    $financial_accounts= financial_accounts::where('orginal_type',1)->where('orginal_id',$customerId)->first();
+
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $Bank_transfer+$bankamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$creaditamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>0
+
+            ]
+        );
+
+           
+       }
+
+// new addition 2024-12-9
+
+
+$total_value=$Bank_transfer+$creaditamount+$bankamount+$cashamount;
+
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(112);
+    financial_accounts::find(112)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+($total_value*100/115),
+         'creditor_current'=>$financial_accounts->creditor_current+($total_value*100/115),
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+     ]
+     ); 
+credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  112,
+                'recive_amount' => ($total_value*100/115),
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+($total_value*100/115),
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> ($total_value*100/115),
+                'debtor'=>0
+
+            ]
+        );
+
+
+               $financial_accounts= financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',112)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance+($total_value*100/115),
+         'creditor_current'=>$financial_accounts->creditor_current+($total_value*100/115),
+        //  'debtor_current'=>$financial_accounts->creditor_current+ $total_value,
+
+       ]
+       ); 
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => ($total_value*100/115),
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+($total_value*100/115),
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> ($total_value*100/115),
+                'debtor'=>0
+
+            ]
+        );
+
+
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(183);
+    financial_accounts::find(183)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance+$total_cost,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_cost,
+
+     ]
+     ); 
+      credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  183,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost
+
+            ]
+        );
+
+
+             $financial_accounts= financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',183)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance+$total_cost,
+         'debtor_current'=>$financial_accounts->debtor_current+$total_cost,
+
+       ]
+       ); 
+
+
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$total_cost
+
+            ]
+        );
+
+
+
+
+
+  $financial_accounts= financial_accounts::find(181);
+    financial_accounts::find(181)->update(
+     [
+         'current_balance'=> $financial_accounts->current_balance-$total_cost,
+         'creditor_current'=>$financial_accounts->creditor_current+ $total_cost,
+
+     ]
+     ); 
+      credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  181,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost,
+                'debtor'=>0
+
+            ]
+        );
+
+               $financial_accounts= financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->first();
+    financial_accounts::where('parent_account_number',181)->where('branchs_id', Auth()->user()->branchs_id)->update(
+       [
+        'current_balance'=> $financial_accounts->current_balance-$total_cost,
+        'creditor_current'=>$financial_accounts->creditor_current+ $total_cost,
+
+       ]
+       ); 
+  credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $total_cost,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance-$total_cost,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> $total_cost,
+                'debtor'=>0
+
+            ]
+        );
+
+
+
+// end addition
+
+
+
+ 
+     
+     
+            if ($creaditamount != 0 || $creaditamount != null) {
+                $customerdata = customers::find($customerId);
+
+                $updateCustomer = customers::where('id', $customerId)->update(
+                    [
+                        'Balance' => $customerdata->Balance + ($creaditamount)
+                    ]
+                );
+  
+  
+     $financial_accounts= financial_accounts::where('orginal_type',1)->where('orginal_id',$customerId)->first();
+   
+         financial_accounts::where('orginal_type',1)->where('orginal_id',$customerId)->update(
+     [
+         'current_balance'=>$financial_accounts->current_balance+($creaditamount),
+         'debtor_current'=>$financial_accounts->debtor_current+ $creaditamount,
+
+     ]
+     ); 
+     
+ credittransactions::create(
+            [
+                // 'attachments'=>$the_file_path_2??'-',
+                'user_id' => Auth()->user()->id,
+                'customer_id' =>  $financial_accounts->id,
+                'recive_amount' => $creaditamount,
+                'branchs_id' => Auth()->user()->branchs_id,
+                'pay_method' => $paymentMethod,
+                'note' =>  '  فاتورة تسليم منتج رقم :'.(string) $confirminvoice->id,
+                'currentblance'=>$financial_accounts->current_balance+$creaditamount,
+                'Pay_Method_Name' => $paymentMethod,
+                'created_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
+                'orginal_id'=>0,
+                'creditor'=> 0,
+                'debtor'=>$creaditamount
+
+            ]
+        );
+
+      $updateCustomer = customers::find($customerId);
+            delivery_to_customer_withoud_tax_invoices::find($confirminvoice->id)->update(
+                [
+                    'currentblance' =>$updateCustomer->Balance,
+
+                ]
+            );
+            }
+      
+        
+        return $confirminvoice->id;
+    
+    
+        
+        
+        
+        
+        
+        
+    
+
+
+}
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
         public function save_update_DateInvoice( $id,$date){
 invoices::where('id',  $id)->update(['created_at' => $date . ' ' . substr(\Carbon\Carbon::now()->addHours(3), 12) ]);
 credittransactions::where('note',  '  فاتورة مبيعات رقم :'.(string) $id  )->update(['created_at' => $date . ' ' . substr(\Carbon\Carbon::now()->addHours(3), 12) ]);

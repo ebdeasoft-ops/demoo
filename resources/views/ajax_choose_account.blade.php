@@ -15,6 +15,8 @@
                     <th style="font-size: 18px;font-weight: bold;" class="border-bottom-0">{{__('home.credit')}}</th> {{-- الحركة دائن --}}
                     <th style="font-size: 18px;font-weight: bold;" class="border-bottom-0">{{__('home.current balance')}}</th>
                     <th style="font-size: 18px;font-weight: bold;" class="border-bottom-0">{{__('home.status_active')}}</th>
+                                    <th style="color: #FF4F1F;font-size:11px" class="border-bottom-0">{{ __('home.operations') }}</th>
+
                 </tr>
             </thead>
             <tbody>
@@ -27,8 +29,6 @@
                         <td style="font-weight: bold;">{{App::getLocale()=='ar'?$item['account']->acounts_type->name_ar:$account->acounts_type->name_en}}</td>
                         <td>{{ $item['account']->is_master ? __('home.Master_account') : __('home.scandary')  }}</td>
                         <td>{{$item['account']->parent_account_number!=NULL?App::getLocale()=='ar'?$item['account']->parent_account->name :$item['account']->parent_account->name_en:$item['account']->acounts_type->name_ar}}</td>
-
-                        {{-- المبالغ من مصفوفة sums --}}
                         <td class="text-info">{{ number_format($item['sums']['o_d'], 2) }}</td>
                         <td class="text-info">{{ number_format($item['sums']['o_c'], 2) }}</td>
                         <td class="text-secondary">{{ number_format($item['sums']['c_d'], 2) }}</td>
@@ -46,12 +46,54 @@
                             @endif
                         </td>
 
-                        <td>
-                                <span class="label text-success d-flex"><div class="dot-label bg-success ml-1"></div>{{__('users.active')}}</span>
-                          
-                        </td>
+                     <td>
+    @if($item['account']->active == 1)
+        {{-- حالة النشط --}}
+        <span class="label text-success d-flex align-items-center">
+            <div class="dot-label bg-success ml-1"></div>
+            {{ __('users.active') }}
+        </span>
+    @else
+        {{-- حالة غير النشط --}}
+        <span class="label text-danger d-flex align-items-center">
+            <div class="dot-label bg-danger ml-1"></div>
+            {{ app()->getLocale() == 'ar' ? 'غير نشط' : 'Inactive' }}
+        </span>
+    @endif
+    
+        <div class="custom-control custom-switch ms-3">
+                                                                <input type="checkbox" class="custom-control-input update-status" 
+                                                                       id="switch-{{ $item['account']->id }}" data-id="{{ $item['account']->id }}"
+                                                                       {{ $item['account']->active == 1 ? 'checked' : '' }}>
+                                                                <label class="custom-control-label" for="switch-{{ $item['account']->id }}">({{__('home.status_active')}})</label>
+                                                            </div>
+</td>
 
-                      
+                      <td>
+<div class="d-flex">
+        <a class="modal-effect btn btn-sm btn-info edit-account-btn ml-1" 
+           data-effect="effect-scale" 
+           data-toggle="modal" 
+           href="#edit_account_modal"
+           data-id="{{ $item['account']->id }}"
+           data-name="{{ $item['account']->name }}"
+           data-is-master="{{ $item['account']->is_master }}"
+           data-parent="{{ $item['account']->parent_account_number }}"
+           title="{{ __('home.edit') }}">
+           <i class="las la-pen"></i>
+        </a>
+        
+    <a class="btn btn-sm btn-danger delete-btn" 
+       data-id="{{ $item['account']->id}}" 
+       title="{{ app()->getLocale() == 'ar' ? 'حذف' : 'Delete' }}">
+       <i class="las la-trash"></i> {{ app()->getLocale() == 'ar' ? 'حذف' : 'Delete' }}
+    </a>
+    
+    </div>
+    
+
+
+</td>
                     </tr>
                 @endforeach
             </tbody>

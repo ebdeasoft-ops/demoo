@@ -89,6 +89,39 @@ define('camplogo', $system_setting->logo);
 
 
 Route::get('/save_update_DateInvoice/{id}/{date}', [InvoicesController::class, 'save_update_DateInvoice']);
+Route::post('/delete_account', [FinancialAccountsController::class, 'destroyOrder']);
+Route::post('/update_account_status', [FinancialAccountsController::class, 'updateStatus']);
+Route::post('/update_account_details', [FinancialAccountsController::class, 'updateDetails']);
+
+
+
+Route::get('/update_deliverybyidforsaleupdate/{id}', [InvoicesController::class, 'update_deliverybyidforsaleupdate']);
+Route::post('save_delivery_sale',  [InvoicesController::class, 'save_delivery_sale']);
+Route::get('previousSales_not_sended_Invoices', [InvoicesController::class, 'previousSales_not_sended_Invoices']);
+Route::get('previousSales_sended_Invoices', [InvoicesController::class, 'previousSales_sended_Invoices']);
+Route::get('getdata_previousSales_not_sended_Invoices', [InvoicesController::class, 'previousSales_not_sended_Invoices']);
+Route::get('get_data_previousSales_sended_Invoices', [InvoicesController::class, 'previousSales_sended_Invoices']);
+Route::get('getAllinvicesajax_send_zatca', [InvoicesController::class, 'getAllinvicesajax_send_zatca']);
+Route::get('getAllinvicesajax_send_zatca_not', [InvoicesController::class, 'getAllinvicesajax_send_zatca_not']);
+Route::get('previous_deliver_Invoices', [ProductsController::class, 'previous_deliver_Invoices']);
+Route::post('return_sale_delivery', [InvoicesController::class, 'return_sale_delivery']);
+Route::get('/delivery_product_to_customer', [InvoicesController::class, 'delivery_product_to_customer']);
+Route::get('getAllinvices_deliveryajax', [ProductsController::class, 'getAllinvices_deliveryajax']);
+Route::get('/confirmpaymentconfirmpaymentdelivery_to_customer_withoud_tax_invoices/{inviceId}/{cashamount}/{bankamount}/{creaditamount}/{Bank_transfer}/{payment}/{customerId}/{numbershowstatus}/{date}', [InvoicesController::class, 'confirmpaymentconfirmpaymentdelivery_to_customer_withoud_tax_invoices']);
+Route::get('showInvoiceRecentdelivery/{id}', [InvoicesController::class, 'showInvoiceRecentdelivery']);
+Route::post('print_Invoice_withod_tax', [InvoicesController::class, 'print_Invoice_withod_tax']);
+Route::post('update_return_sale_delivery', [InvoicesController::class, 'update_return_sale_delivery']);
+Route::get('getinvoicesbycustomerdelivery/{date}', [ProductsController::class, 'getinvoicesbycustomerdelivery']);
+Route::get('searchaboutinvoiceByIdfunction_delivery/{date}', [ProductsController::class, 'searchaboutinvoiceByIdfunction_delivery']);
+Route::get('/sel_product_DELIVERY', [ReportController::class, 'sel_product_DELIVERY']);
+Route::post('/salesReport_delivery', [ReportController::class, 'salesReport_delivery']);
+Route::get('/report_returns_sale_delivery', [ReportController::class, 'report_delivery_return']);
+Route::post('/report_returns_sale_delivery', [ReportController::class, 'search_report_returns_sale_delivery']);
+
+
+
+
+
 
 
 
@@ -975,12 +1008,8 @@ Route::middleware([
 
 
     // Home Screen
-    Route::get('/dashboard', function () {
-        //   return resource_purchases::whereDate('created_at','>=',(date("Y").'-02'.'-01'))->whereDate('created_at','<',(date("Y").'-03'.'-01'))->get();
-        app()->setLocale(LaravelLocalization::getCurrentLocale());
+    Route::get('/dashboard', [InvoicesController::class, 'dashboard']);
 
-        return view('index');
-    })->name('dashboard');
     Route::get('/{page}', function ($page) {
 
         if (view()->exists($page)) {

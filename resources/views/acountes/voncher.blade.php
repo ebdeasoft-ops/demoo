@@ -86,7 +86,7 @@
                                         {{ $type ?? __('home.acount_name') }}
                                     </option>
 
-                                    @foreach (App\Models\financial_accounts::get() as $section)
+                                    @foreach (App\Models\financial_accounts::where('active',1)->get() as $section)
                                     <option value="{{ $section->id }}"> {{ $section->name }} ({{ $section->account_number }})</option>
                                     @endforeach
                                 </select>

@@ -93,7 +93,7 @@
 
                         <input type="hidden" id="token_search" value="{{ csrf_token() }}">
 <?php
-$financial_accounts=App\Models\financial_accounts::get()
+$financial_accounts=App\Models\financial_accounts::where('active',1)->get()
 
 ?>
 

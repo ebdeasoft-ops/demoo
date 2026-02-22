@@ -25,11 +25,46 @@ use App\Models\invoices;
 use App\Models\return_sales;
 use App\Models\product_movement_another_branch_items;
 use App\Models\product_movement_another_branch;
-
+use App\Models\sales_withoud_taxes;
+use App\Models\delivery_to_customer_withoud_tax_invoices;
+use App\Models\return_sales_deliverys;
 use Mcamara\LaravelLocalization\Facades\LaravelLocalization as LaravelLocalization;
 
 class ProductsController extends Controller
 {
+              public function previous_deliver_Invoices()
+    {
+        //
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+       $data=delivery_to_customer_withoud_tax_invoices::where('branchs_id',Auth()->user()->branchs_id)->where('save',1)->where('status',0)->paginate(20);
+        return  view('previous_deliver_Invoices',compact(('data')));
+    } 
+    
+        public function getAllinvices_deliveryajax()
+    {
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+        $data=delivery_to_customer_withoud_tax_invoices::where('branchs_id',Auth()->user()->branchs_id)->where('save',1)->where('status',0)->orderby('id','desc')->paginate(20);
+        return view('ajax_delivery_Invoices', compact('data'));
+    }
+    
+    
+        public function searchaboutinvoiceByIdfunction_delivery($date)
+    {
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+        $data = delivery_to_customer_withoud_tax_invoices::where('branchs_id',Auth()->user()->branchs_id)->where('save',1)->where('status',0)->where('id', $date )->paginate(20);
+        return view('ajax_delivery_Invoices', compact('data'));
+    }
+    
+    
+        public function getinvoicesbycustomerdelivery($date)
+    {
+        app()->setLocale(LaravelLocalization::getCurrentLocale());
+
+        $data = delivery_to_customer_withoud_tax_invoices::where('branchs_id',Auth()->user()->branchs_id)->where('save',1)->where('status',0)->where('customer_id', $date )->paginate(20);
+        return view('ajax_delivery_Invoices', compact('data'));
+    }
     
        public function searchfinancial_accounts(Request $request)
 {

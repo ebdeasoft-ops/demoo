@@ -1,6 +1,9 @@
 <?php
 
 return [
+                'delivery_return'=>'return deliveries',
+    'salesreturned_delivery'=>'returned deliveries',
+    'previous_deliver_Invoices'=>'previous deliveries',
     'scandary' => "Sub-account",
     'transction_day' => "Transactions of the day",
         'update_deliy_record'=>"Update record  ",

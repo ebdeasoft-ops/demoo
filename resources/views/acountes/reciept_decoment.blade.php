@@ -91,7 +91,7 @@
                                 <p class="mg-b-10"> {{__('home.paymentmethod')}}</p>
                                 <select class="form-control select2" name="paymentmethod" id="paymentmethod" required>
                                 <option value="-"> {{__('home.acount_name')}}</option>
-                                    @foreach (App\Models\financial_accounts::where('parent_account_number',4)->orwhere('parent_account_number',5)->where('parent_account_number','!=',NULL)->get() as $section)
+                                    @foreach (App\Models\financial_accounts::where('parent_account_number',4)->where('active',1)->orwhere('parent_account_number',5)->where('parent_account_number','!=',NULL)->where('active',1)->get() as $section)
                                     <option value="{{ $section->id }}"> {{ $section->name }} ({{ $section->account_number }})</option>
                                     @endforeach
                                 </select>

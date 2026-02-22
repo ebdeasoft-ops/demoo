@@ -344,8 +344,17 @@ $date='';
 
  public function save_Opening_entry( $dely_record_id){
   
-        $credittransactions=credittransactions::where( 'Opening_entry' ,$dely_record_id)->get();
-       
+                $credittransactions=credittransactions::where( 'Opening_entry' ,$dely_record_id)->get();
+            $credit_sum=0;
+             $debit_sum=0;
+        
+
+        foreach($credittransactions as $item){
+                  $credit_sum+= $item->creditor ;
+                  $debit_sum+=$item->debtor ;
+         
+        }  
+        if($credit_sum==$debit_sum){ 
 
     foreach($credittransactions as $item){
 
@@ -534,7 +543,11 @@ $date='';
             
             return [1,"  تم حفظ القيد بنجاح  \n The entry has been saved successfully"];
        
-        
+ }else
+        {
+            
+            return  [0, "يجب ان يكون طرفي القيد  متساوين نرجو منك المراجعة قبل الضغط علي حفظ مجددا \n   Both sides of the entry must be equal. Please review before clicking Save again"];
+        }
         
         
         
@@ -768,38 +781,7 @@ $image->move($folder, $the_file_path_1);
             ]
         );
         
-       
-             if($financial_accounts->parent_account_number)
-{   
-    $financial_accounts= financial_accounts::find($financial_accounts->parent_account_number);
-  credittransactions::create(
-            [
-        
-                'attachments'=>$the_file_path_1,
-                'orginal_type'=>$financial_accounts->orginal_type??0,
-                'user_id' => Auth()->user()->id,
-                'customer_id' =>  $financial_accounts->id,
-                'branchs_id' => Auth()->user()->branchs_id,
-                'pay_method' => 'Cash',
-'note' =>  $request->notes.'  |  قيد يومي رقم :  '.(string)$dely_record_count,
-                'currentblance'=>$financial_accounts->current_balance,
-                'Pay_Method_Name' => 'Cash',
-                'created_at'  =>  $request->date,
-                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
-                'orginal_id'=>$financial_accounts->orginal_id??0,
-                'recive_amount'=> $request->debit_1+$request->credit_1,
-                'debtor'=> $request->debit_1,
-                'creditor'=>$request->credit_1,
-                'save'=>0,
-                'Opening_entry'=>$dely_record_count,
-                'parent_Opening_entry'=>$dely_record_count,
 
-
-            ]
-        );
-        
-       
-}
         
            
     }
@@ -831,36 +813,6 @@ $image->move($folder, $the_file_path_1);
             ]
         );
         
-       if($financial_accounts->parent_account_number)
-{   
-    $financial_accounts= financial_accounts::find($financial_accounts->parent_account_number);
-  credittransactions::create(
-            [
-        
-                   'attachments'=>$the_file_path_1,
-                'orginal_type'=>$financial_accounts->orginal_type??0,
-                'user_id' => Auth()->user()->id,
-                'customer_id' =>  $financial_accounts->id,
-                'branchs_id' => Auth()->user()->branchs_id,
-                'pay_method' => 'Cash',
-'note' =>  $request->notes.'  |  قيد يومي رقم :  '.(string)$dely_record_count,
-                'currentblance'=>$financial_accounts->current_balance,
-                'Pay_Method_Name' => 'Cash',
-                'created_at'  =>  $request->date,
-                'updated_at'  =>  \Carbon\Carbon::now()->addHours(3),
-                'orginal_id'=>$financial_accounts->orginal_id??0,
-                'debtor'=> $request->debit_1,
-                'creditor'=>$request->credit_1,
-                'save'=>0,
-                'recive_amount'=> $request->debit_1+$request->credit_1,
-                'Opening_entry'=>$dely_record_count,
-                'parent_Opening_entry'=>$dely_record_count,
-
-            ]
-        );
-        
-       
-}
 
           
     }

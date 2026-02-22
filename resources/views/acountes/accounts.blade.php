@@ -4,6 +4,7 @@
 <link href="{{ URL::asset('assets/plugins/datatable/css/buttons.bootstrap4.min.css') }}" rel="stylesheet">
 <link href="{{ URL::asset('assets/plugins/select2/css/select2.min.css') }}" rel="stylesheet">
 <link href="{{ URL::asset('assets/plugins/spectrum-colorpicker/spectrum.css') }}" rel="stylesheet">
+<link href="{{URL::asset('assets/plugins/select2/css/select2.min.css')}}" rel="stylesheet">
 <style>
     /* تحسين مظهر الكروت والفلاتر */
     .card-header { background-color: #f8f9fa; border-bottom: 1px solid #e9ecef; }
@@ -103,12 +104,12 @@
                     </div>
 
                     <div class="col-lg-3 col-md-6 mb-3">
-                        <label class="parent-label">من تاريخ</label>
+                        <label class="parent-label">{{ __('report.fromdate') }} </label>
                         <input class="form-control fc-datepicker" id="start_at_filter" value="{{ date('Y-01-01') }}" type="text" placeholder="YYYY-MM-DD">
                     </div>
 
                     <div class="col-lg-3 col-md-6 mb-3">
-                        <label class="parent-label">إلى تاريخ</label>
+                        <label class="parent-label">  {{ __('report.todate') }}</label>
                         <input class="form-control fc-datepicker" id="end_at_filter" value="{{ date('Y-m-d') }}" type="text" placeholder="YYYY-MM-DD">
                     </div>
 
@@ -130,13 +131,170 @@
         </div>
     </div>
 </div>
+<div class="modal fade" id="edit_account_modal"  role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">{{ __('users.update') }}</h6>
+                <button aria-label="Close" class="close" data-dismiss="modal" type="button"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <form id="update_account_form">
+                @csrf
+                <div class="modal-body">
+                    <input type="hidden" id="edit_id" name="id">
+                    
+                    {{-- اسم الحساب --}}
+                    <div class="form-group">
+                        <label>{{ __('home.acount_name') }}</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    </div>
 
+
+                </div>
+                <div class="modal-footer">
+               
+                
+                
+                
+                    <button class="btn ripple btn-primary" type="submit" id="submit_btn">{{ __('home.confirm') }}</button>
+                    <button class="btn ripple btn-secondary" data-dismiss="modal" type="button">{{ __('home.cancel') }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 @endsection
 @section('js')
 <script src="{{ URL::asset('assets/plugins/jquery-ui/ui/widgets/datepicker.js') }}"></script>
 <script src="{{ URL::asset('assets/plugins/select2/js/select2.min.js') }}"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{URL::asset('assets/plugins/select2/js/select2.min.js')}}"></script>
 <script>
+$(document).on('change', '.update-status', function() {
+    let accountId = $(this).data('id');
+    let isActive = $(this).is(':checked') ? 1 : 0;
+    let isAr = "{{ app()->getLocale() }}" == 'ar';
+
+    $.ajax({
+        url: "{{ url('/update_account_status') }}",
+        method: "POST",
+        data: {
+            _token: "{{ csrf_token() }}",
+            id: accountId,
+            active: isActive
+        },
+        success: function(response) {
+            if(response.success) {
+                // رسالة النجاح
+                const Toast = Swal.mixin({
+                    toast: true,
+                    position: 'bottom-end', // تظهر أسفل الشاشة (يمين للعربي)
+                    showConfirmButton: false,
+                    timer: 3000,
+                    timerProgressBar: true,
+                });
+
+                Toast.fire({
+                    icon: 'success',
+                    title: isAr ? 'تم تحديث الحالة بنجاح' : 'Status updated successfully'
+                });
+                
+                
+        // تفعيل منتقي التاريخ مع التحديث التلقائي
+        $('.fc-datepicker').datepicker({
+            dateFormat: 'yy-mm-dd',
+            onSelect: function() { fetchAccountsData(); }
+        });
+
+        // جلب البيانات لأول مرة عند تحميل الصفحة
+        fetchAccountsData();
+
+        // ربط تغيير نوع الحساب بالدالة
+        $('#searchaboutaccountBytype_function').on('change', function() {
+            fetchAccountsData();
+        });
+    
+            }
+        },
+        error: function(r) {
+            console.log(r)
+            // رسالة الخطأ
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'bottom-end',
+                showConfirmButton: false,
+                timer: 3000,
+            });
+
+            Toast.fire({
+                icon: 'error',
+                title: isAr ? 'حدث خطأ ما أثناء التحديث' : 'An error occurred during update'
+            });
+        }
+    });
+});
+
+
+$(document).on('click', '.delete-btn', function(e) {
+    e.preventDefault();
+    let id = $(this).data('id');
+    let locale = "{{ app()->getLocale() }}";
+    let tr = $(this).closest('tr');
+console.log(id)
+    Swal.fire({
+        title: locale == 'ar' ? 'هل أنت متأكد؟' : 'Are you sure?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: locale == 'ar' ? 'نعم، احذف!' : 'Yes, delete it!',
+        cancelButtonText: locale == 'ar' ? 'إلغاء' : 'Cancel'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                url: "{{ url('/delete_account') }}", 
+                method: "POST",
+                data: {
+                    _token: "{{ csrf_token() }}",
+                    id: id
+                },
+                success: function(response) {
+                    if(response.success) {
+                        tr.fadeOut(500);
+                        showToast('success', locale == 'ar' ? 'تم الحذف بنجاح' : 'Deleted successfully');
+                    }
+                },
+                error: function(xhr) {
+                    console.log(xhr)
+                    let response = xhr.responseJSON;
+                    
+                    if (xhr.status === 422 && response.status === 'has_data') {
+                        // إظهار الرسالة التي طلبتها في حالة وجود عمليات
+                        Swal.fire({
+                            icon: 'error',
+                            title: locale == 'ar' ? 'عذراً' : 'Sorry',
+                            text: locale == 'ar' ? response.message_ar : response.message_en,
+                            confirmButtonText: locale == 'ar' ? 'موافق' : 'OK'
+                        });
+                    } else {
+                        showToast('error', locale == 'ar' ? 'حدث خطأ غير متوقع' : 'Unexpected error');
+                    }
+                }
+            });
+        }
+    });
+});
+
+// دالة مساعدة لإظهار التنبيهات
+function showToast(icon, title) {
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'bottom-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true
+    });
+    Toast.fire({ icon: icon, title: title });
+}
+
 function searchaboutinvoiceByIdfunction() {
     var searchText = $('#invoiceid').val(); // القيمة من خانة البحث
     var start = $('#start_at').val(); // تأكد من الـ id الخاص بتاريخ البداية
@@ -199,6 +357,53 @@ function searchaboutinvoiceByIdfunction() {
 
 
     $(document).ready(function() {
+        
+        $(document).on('click', '.edit-account-btn', function() {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+   
+        $('#edit_id').val(id);
+        $('#edit_name').val(name);
+    });
+
+    // عند إرسال الفورم عبر AJAX
+    $('#update_account_form').on('submit', function(e) {
+        e.preventDefault();
+        var formData = $(this).serialize();
+
+        $.ajax({
+            url: "{{ url('/update_account_details') }}", // تأكد من اسم الـ Route
+            method: "POST",
+            data: formData,
+            beforeSend: function() {
+                $('#submit_btn').attr('disabled', true).text('...');
+            },
+            success: function(response) {
+                if(response.success) {
+                    $('#edit_account_modal').modal('hide');
+                    Swal.fire({
+                        icon: 'success',
+                        title: "{{ app()->getLocale() == 'ar' ? 'تم التعديل بنجاح' : 'Updated Successfully' }}",
+                        toast: true,
+                        position: 'bottom-end',
+                        showConfirmButton: false,
+                        timer: 3000
+                    });
+                    setTimeout(function() { location.reload(); }, 1500);
+                }
+            },
+            error: function(r) {
+                console.log(r)
+                alert('Error Updating Data');
+                $('#submit_btn').attr('disabled', false).text("{{ __('home.save') }}");
+            }
+        });
+    });
+    
+    
+    
+    
+    
         // تفعيل منتقي التاريخ مع التحديث التلقائي
         $('.fc-datepicker').datepicker({
             dateFormat: 'yy-mm-dd',

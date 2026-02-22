@@ -464,7 +464,7 @@ $data= credittransactions::where('branchs_id',Auth()->user()->branchs_id)->where
     {
         app()->setLocale(LaravelLocalization::getCurrentLocale());
 
-$data= credittransactions::where('branchs_id',Auth()->user()->branchs_id)->where('dely_record','!=',0)->where('note', 'LIKE', '%' . 'قيد يومي رقم' . '%')->whereDate('created_at', '<=',date('Y-m-d'))->whereDate('created_at', '>=',date('Y'). '-1'. '-1' )->where('decument_id', 0 )->where('save', 0)->orderby('id', 'desc')->paginate(4);
+$data= credittransactions::where('branchs_id',Auth()->user()->branchs_id)->where('dely_record','!=',0)->where('note', 'LIKE', '%' . 'قيد يومي رقم' . '%')->whereDate('created_at', '<=',date('Y-m-d'))->whereDate('created_at', '>=',date('Y'). '-1'. '-1' )->where('decument_id', 0 )->where('save',1)->orderby('id', 'desc')->paginate(4);
        
         return view('ajax_dely_record', compact('data'));
     }
@@ -473,7 +473,7 @@ $data= credittransactions::where('branchs_id',Auth()->user()->branchs_id)->where
     {
         app()->setLocale(LaravelLocalization::getCurrentLocale());
 
-$data= credittransactions::where('branchs_id',Auth()->user()->branchs_id)->where('dely_record',$id)->where('note', 'LIKE', '%' . 'قيد يومي رقم' . '%')->where('save', 0)->orderby('id', 'desc')->paginate(4);
+        $data= credittransactions::where('branchs_id',Auth()->user()->branchs_id)->where('dely_record',$id)->where('note', 'LIKE', '%' . 'قيد يومي رقم' . '%' )->where('save',1)->orderby('id', 'desc')->paginate(4);
        
         return view('ajax_dely_record', compact('data'));
     }

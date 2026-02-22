@@ -12,6 +12,12 @@ return [
     | you want to customize your views to better match your application.
     |
     */
+        "delivery_current_month"=>"التسليمات الشهر الجاري",
+        'sel_product_withoud_tax'=>"تسليم منتج لعميل ",
+
+        'previous_deliver_Invoices'=>'التسليمات السابقة',
+    'salesreturned_delivery'=>'مرتجع التسليمات',
+'delivery_return'=>'مترجع التسليم',
     'scandary'=>"حساب فرعي  ",
     'transction_day'=>"حركات اليوم ",
     'update_deliy_record'=>"تعديل القيد ",

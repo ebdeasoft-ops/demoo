@@ -15,8 +15,68 @@ use Illuminate\Support\Facades\DB;
 
 class FinancialAccountsController extends Controller
 {
+    public function updateDetails(Request $request)
+{
+    $account = \App\Models\financial_accounts::findOrFail($request->id);
+    
+    $account->update([
+        'name' => $request->name,
+    ]);
+
+           
+           
+    return response()->json(['success' => true]);
+}
+
+
+
+
+    public function updateStatus(Request $request)
+{
+    $account = financial_accounts::findOrFail($request->id);
+    $account->active = $request->active;
+    $account->save();
+
+    return response()->json(['success' => true]);
+}
+
+public function destroyOrder(Request $request)
+{
+    try {
+        // 1. جلب الحساب
+        $account = financial_accounts::findOrFail($request->id);
+
+        // 2. التحقق من وجود عمليات مرتبطة (جدول credittransactions)
+        // افترضنا أن العلاقة موجودة في الموديل أو نستخدم DB مباشرة
+        $hasTransactions = credittransactions::where('customer_id', $account->id)->exists();
+
+        if ($hasTransactions) {
+            return response()->json([
+                'success' => false,
+                'status' => 'has_data',
+                'message_ar' => 'عذراً لا يمكن حذف الحساب، يوجد عمليات مسجلة به',
+                'message_en' => 'Sorry, the account cannot be deleted, there are transactions recorded in it'
+            ], 422); // كود 422 يعني فشل منطقي (Validation)
+        }
+
+        // 3. إذا لم يوجد عمليات، يتم الحذف
+        $account->delete();
+
+        return response()->json([
+            'success' => true
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error'
+        ], 500);
+    }
+}
+
 public function searchaboutaccountByname_numberfunction(Request $request)
 {
+    
     app()->setLocale(\LaravelLocalization::getCurrentLocale());
 
     $search_text = $request->search_text;
